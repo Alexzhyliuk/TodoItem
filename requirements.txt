@@ -1,0 +1,5 @@
+Django==2.1.5
+django-heroku==0.3.1
+django-taggit==0.23.0
+py-trello==0.15.0
+Unidecode==1.0.23
