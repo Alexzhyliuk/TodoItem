@@ -13,8 +13,12 @@
   {% else %}
   <h1>Все текущие задачи</h1>
   {% endif %}
- 
+  
+  {% if tag %}
+  <p><i class="fa fa-download"></i>&nbsp;<a href="{% url "tasks:export" tag.slug %}">экспорт</a></p>
+  {% else %}
   <p><i class="fa fa-download"></i>&nbsp;<a href="{% url "tasks:export" %}">экспорт</a></p>
+  {% endif %}
   <p><a style="color: black; font-size: 14px;" href="{% url "tasks:list" %}">Все задачи</a></p>
   {% for t in all_tags %}
     {% if forloop.first %}<ul class="list-inline">
@@ -49,7 +53,7 @@
       {% elif task.priority == task.PRIORITY_LOW %}
       <span class="badge badge-pill badge-success">&nbsp;</span>
       {% endif %}
-      <a href={% url "tasks:details" task.id %}>{{ task }}<!--<em style="font-size: 10px;"></em>--></a>
+      <a href={% url "tasks:details" task.id %}>{{ task }}<!--<<em style="font-size: 10px;"></em>--></a>
       {% if tag %}
       <a class="remove" href={% url "tasks:delete" task.id tag.slug %}>X</a>
       {% else %}
@@ -60,4 +64,12 @@
     {% if forloop.last %}<li>Всего задач: {{ how_much }}. Выполнено: {{ hmt_cmpl }}.<hr/></li>{% endif %}
   {% endfor %}
   </ul>
+  
+  {% if not tag %}
+  {% for tr in trello %}
+      <ul>
+        <li>{{ tr.name }}</li>
+      </ul>
+  {% endfor %}
+  {% endif %}
 {% endblock %}

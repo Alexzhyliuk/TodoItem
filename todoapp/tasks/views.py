@@ -12,6 +12,8 @@ from django.views.generic import ListView
 from django.views.generic.detail import DetailView
 from tasks.forms import AddTaskForm, TodoItemExportForm, TodoItemForm
 from tasks.models import TodoItem
+from accounts.models import Profile
+from trello import TrelloClient
 from taggit.managers import TaggableManager
 from taggit.models import Tag
 
@@ -77,6 +79,20 @@ def delete_task(request, uid, tag_slug=None):
 #        return context
 
 def tasks_by_tag(request, tag_slug=None):
+    u = request.user
+
+    inf = Profile.objects.get(user=u)
+    if inf.api_key and inf.api_secret:
+        key = inf.api_key
+        secret = inf.api_secret
+        try:
+            client = TrelloClient(api_key=key, api_secret=secret)
+        except:
+            messages.info(request, "Неправильные данные trello")
+        trello_board = client.list_boards()[0]
+        trello_list = trello_board.list_lists()[-1]
+        tasks_from_trello = trello_list.list_cards()
+
     def filter_tags(tags_by_task):
             list_of_tags = []
             for e in tags_by_task:
@@ -85,7 +101,6 @@ def tasks_by_tag(request, tag_slug=None):
             uniq_list_of_tags = set(list_of_tags)
             return uniq_list_of_tags
 
-    u = request.user
     tasks = TodoItem.objects.filter(owner=u).all()
 
     tag = None
@@ -93,10 +108,12 @@ def tasks_by_tag(request, tag_slug=None):
         tag = get_object_or_404(Tag, slug=tag_slug)
         tasks = tasks.filter(tags__in=[tag])
 
-    #tags_of_task = []
-    #for task in tasks:
-    #    tags_of_task.append(task.description)
-    #    tags_of_task.append(task.tags.all())
+    tags_of_task = []
+    for task in tasks:
+        taska = task.description
+        taga = task.tags.all()
+        both = (taska, taga)
+        tags_of_task.append(both)
         
 
 
@@ -132,6 +149,8 @@ def tasks_by_tag(request, tag_slug=None):
         "how_much": hmt,
         "hmt_cmpl": hmt_cmpl,
         "tags": tags,
+        "trello": tasks_from_trello,
+        "tags_and_task": tags_of_task,
         },
     )
 
@@ -176,7 +195,7 @@ class TaskDetailsView(LoginRequiredMixin, DetailView):
 
 
 class TaskExportView(LoginRequiredMixin, View):
-    def generate_body(self, user, priorities):
+    def generate_body(self, user, priorities, tag_slug):
         q = Q()
         if priorities["prio_high"]:
             q = q | Q(priority=TodoItem.PRIORITY_HIGH)
@@ -184,28 +203,39 @@ class TaskExportView(LoginRequiredMixin, View):
             q = q | Q(priority=TodoItem.PRIORITY_MEDIUM)
         if priorities["prio_low"]:
             q = q | Q(priority=TodoItem.PRIORITY_LOW)
-        tasks = TodoItem.objects.filter(owner=user).filter(q).filter().all()
+        tasks = TodoItem.objects.filter(owner=user).filter(q).all()
+        tasks2 = []
+        if tag_slug:
+            for task in tasks:
+                slugs = []
+                for t in task.tags.all():
+                    slugs.append(t.slug)
+
+                if tag_slug in slugs:
+                    tasks2.append(task)
+                    tasks = tasks2
+            
 
         body = "Ваши задачи и приоритеты:\n"
         for t in list(tasks):
             if t.is_completed:
-                body += f"[x] {t.description} ({t.get_priority_display()})\n"
+                body += f"[x] {t.description} ({t.get_priority_display()}, тег - {tag_slug})\n"
             else:
-                body += f"[ ] {t.description} ({t.get_priority_display()})\n"
+                body += f"[ ] {t.description} ({t.get_priority_display()}, тег - {tag_slug})\n"
 
         return body
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, tag_slug=None, *args, **kwargs):
         form = TodoItemExportForm(request.POST)
         if form.is_valid():
             email = request.user.email
-            body = self.generate_body(request.user, form.cleaned_data)
+            body = self.generate_body(request.user, form.cleaned_data, tag_slug)
             send_mail("Задачи", body, settings.EMAIL_HOST_USER, [email])
             messages.success(request, "Задачи были отправлены на почту %s" % email)
         else:
             messages.error(request, "Что-то пошло не так, попробуйте ещё раз")
         return redirect(reverse("tasks:list"))
 
-    def get(self, request, *args, **kwargs):
+    def get(self, request, tag_slug=None, *args, **kwargs):
         form = TodoItemExportForm()
-        return render(request, "tasks/export.html", {"form": form})
+        return render(request, "tasks/export.html", {"form": form, "tag": tag_slug})
